@@ -1,5 +1,5 @@
 // use super::super::storage_vec::Index;
-use super::{traits::*, DbtSingleton, DbtVec, RustyKey};
+use super::{traits::*, DbtSingleton, DbtVec};
 use crate::sync::{AtomicMutex, AtomicRw};
 use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
@@ -43,7 +43,7 @@ use std::sync::Arc;
 /// let tables = (
 ///     storage.schema.new_vec::<u16>("ages"),
 ///     storage.schema.new_vec::<String>("names"),
-///     storage.schema.new_singleton::<bool>(12u64.into())
+///     storage.schema.new_singleton::<bool>("proceed")
 /// );
 ///
 /// let atomic_tables = Arc::new(RwLock::new(tables));
@@ -77,7 +77,7 @@ use std::sync::Arc;
 ///     (
 ///         s.new_vec::<u16>("ages"),
 ///         s.new_vec::<String>("names"),
-///         s.new_singleton::<bool>(12u64.into())
+///         s.new_singleton::<bool>("proceed")
 ///     )
 /// });
 ///
@@ -137,16 +137,19 @@ impl<Reader: StorageReader + 'static + Sync + Send> DbtSchema<Reader> {
     ///
     /// Atomicity: see [`DbtSchema`]
     #[inline]
-    pub fn new_singleton<V>(&mut self, key: RustyKey) -> DbtSingleton<V>
+    pub fn new_singleton<V>(&mut self, name: &str) -> DbtSingleton<V>
     where
         V: Default + Clone + 'static,
         V: Serialize + DeserializeOwned,
         DbtSingleton<V>: DbTable + Send + Sync,
     {
-        let singleton = DbtSingleton::<V>::new(key, self.reader.clone());
-        self.tables
-            .lock_mut(|t| t.push(Box::new(singleton.clone())));
-        singleton
+        self.tables.lock_mut(|t| {
+            assert!(t.len() < 255);
+            let key = t.len() as u8;
+            let singleton = DbtSingleton::<V>::new(key, self.reader.clone(), name);
+            t.push(Box::new(singleton.clone()));
+            singleton
+        })
     }
 
     /// create tables and wrap in an [`AtomicRw<T>`]
@@ -168,7 +171,7 @@ impl<Reader: StorageReader + 'static + Sync + Send> DbtSchema<Reader> {
     ///     (
     ///         s.new_vec::<u16>("ages"),
     ///         s.new_vec::<String>("names"),
-    ///         s.new_singleton::<bool>(12u64.into())
+    ///         s.new_singleton::<bool>("proceed")
     ///     )
     /// });
     ///
@@ -206,7 +209,7 @@ impl<Reader: StorageReader + 'static + Sync + Send> DbtSchema<Reader> {
     ///     (
     ///         s.new_vec::<u16>("ages"),
     ///         s.new_vec::<String>("names"),
-    ///         s.new_singleton::<bool>(12u64.into())
+    ///         s.new_singleton::<bool>("proceed")
     ///     )
     /// });
     ///
@@ -239,7 +242,7 @@ impl<Reader: StorageReader + 'static + Sync + Send> DbtSchema<Reader> {
     ///
     /// let ages = storage.schema.new_vec::<u16>("ages");
     /// let names = storage.schema.new_vec::<String>("names");
-    /// let proceed = storage.schema.new_singleton::<bool>(12u64.into());
+    /// let proceed = storage.schema.new_singleton::<bool>("proceed");
     ///
     /// let tables = (ages, names, proceed);
     /// let atomic_tables = storage.schema.atomic_rw(tables);
@@ -269,7 +272,7 @@ impl<Reader: StorageReader + 'static + Sync + Send> DbtSchema<Reader> {
     ///
     /// let ages = storage.schema.new_vec::<u16>("ages");
     /// let names = storage.schema.new_vec::<String>("names");
-    /// let proceed = storage.schema.new_singleton::<bool>(12u64.into());
+    /// let proceed = storage.schema.new_singleton::<bool>("proceed");
     ///
     /// let tables = (ages, names, proceed);
     /// let atomic_tables = storage.schema.atomic_mutex(tables);

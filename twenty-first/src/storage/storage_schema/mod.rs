@@ -84,9 +84,7 @@ mod tests {
 
         let mut rusty_storage = SimpleRustyStorage::new(db);
         assert_eq!(1, Arc::strong_count(&rusty_storage.schema.reader));
-        let singleton = rusty_storage
-            .schema
-            .new_singleton::<S>(RustyKey([1u8; 1].to_vec()));
+        let singleton = rusty_storage.schema.new_singleton::<S>("singleton");
         assert_eq!(2, Arc::strong_count(&rusty_storage.schema.reader));
 
         // initialize
@@ -126,9 +124,7 @@ mod tests {
         // restore.  re-open existing DB.
         let new_db = DB::open_test_database(&db_path, true, None, None, None).unwrap();
         let mut new_rusty_storage = SimpleRustyStorage::new(new_db);
-        let new_singleton = new_rusty_storage
-            .schema
-            .new_singleton::<S>(RustyKey([1u8; 1].to_vec()));
+        let new_singleton = new_rusty_storage.schema.new_singleton::<S>("singleton");
         new_rusty_storage.restore_or_new();
 
         // test
@@ -645,6 +641,34 @@ mod tests {
     }
 
     #[test]
+    fn singleton_vector_key_collission() {
+        let db = DB::open_new_test_database(false, None, None, None).unwrap();
+        let db_path = db.path().clone();
+        let mut rusty_storage = SimpleRustyStorage::new(db);
+        let vector1 = rusty_storage.schema.new_vec::<u64>("test-vector1");
+        let singleton = rusty_storage.schema.new_singleton::<u64>("singleton-1");
+
+        // initialize
+        rusty_storage.restore_or_new();
+        assert!(vector1.is_empty());
+        singleton.set(1776u64);
+        assert!(vector1.is_empty());
+        rusty_storage.persist();
+        assert!(vector1.is_empty());
+
+        drop(rusty_storage); // <-- DB ref dropped
+        drop(vector1); //       <-- DB ref dropped
+        drop(singleton); //     <-- final DB ref dropped (DB closes)
+
+        // re-open DB / restore from disk
+        let new_db = DB::open_test_database(&db_path, true, None, None, None).unwrap();
+        let mut new_rusty_storage = SimpleRustyStorage::new(new_db);
+        let new_vector1 = new_rusty_storage.schema.new_vec::<S>("test-vector1");
+        new_rusty_storage.restore_or_new();
+        assert!(new_vector1.is_empty());
+    }
+
+    #[test]
     fn test_two_vectors_and_singleton() {
         let singleton_value = S([3u8, 3u8, 3u8, 1u8].to_vec());
 
@@ -655,9 +679,7 @@ mod tests {
         let mut rusty_storage = SimpleRustyStorage::new(db);
         let vector1 = rusty_storage.schema.new_vec::<S>("test-vector1");
         let vector2 = rusty_storage.schema.new_vec::<S>("test-vector2");
-        let singleton = rusty_storage
-            .schema
-            .new_singleton::<S>(RustyKey([1u8; 1].to_vec()));
+        let singleton = rusty_storage.schema.new_singleton::<S>("singleton");
 
         // initialize
         rusty_storage.restore_or_new();
@@ -761,9 +783,7 @@ mod tests {
         let new_vector1 = new_rusty_storage.schema.new_vec::<S>("test-vector1");
         let new_vector2 = new_rusty_storage.schema.new_vec::<S>("test-vector2");
         new_rusty_storage.restore_or_new();
-        let new_singleton = new_rusty_storage
-            .schema
-            .new_singleton::<S>(RustyKey([1u8; 1].to_vec()));
+        let new_singleton = new_rusty_storage.schema.new_singleton::<S>("singleton");
         new_rusty_storage.restore_or_new();
 
         // test again
@@ -1052,7 +1072,7 @@ mod tests {
                 storage.schema.create_tables_rw(|schema| {
                     (0..num)
                         .map(|_i| {
-                            let singleton = schema.new_singleton::<u64>(12u64.into());
+                            let singleton = schema.new_singleton::<u64>("singleton");
                             singleton.set(25);
                             singleton
                         })
@@ -1067,7 +1087,7 @@ mod tests {
 
                 (0..num)
                     .map(|_i| {
-                        let singleton = storage.schema.new_singleton::<u64>(12u64.into());
+                        let singleton = storage.schema.new_singleton::<u64>("singleton");
                         singleton.set(25);
                         singleton
                     })
